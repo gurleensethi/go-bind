@@ -19,12 +19,14 @@ type PhotoFilters struct {
 }
 
 type PhotoAlbumSearchRequest struct {
-	Authorization   string       `header:"authorization"`
-	SearchQuery     *string      `query:"q"`
-	AlbumID         string       `path:"albumID"`
-	PhotoFilters    PhotoFilters `body:"json"`
-	PageSize        int32        `query:"page_size"`
-	IncludeMetadata *bool        `query:"include_metadata"`
+	Authorization        string       `header:"authorization"`
+	SearchQuery          *string      `query:"q"`
+	SearchQueryNotExists *string      `query:"not_exists"`
+	AlbumID              string       `path:"albumID"`
+	PhotoFilters         PhotoFilters `body:"json"`
+	PageSize             int32        `query:"page_size"`
+	PageSizeFloat        float32      `query:"page_size"`
+	IncludeMetadata      *bool        `query:"include_metadata"`
 }
 
 type PhotoAlbumSearchResponse struct {
