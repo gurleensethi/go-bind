@@ -1,0 +1,35 @@
+package main
+
+import (
+	"context"
+	"net/http"
+
+	gobind "github.com/gurleensethi/go-bind"
+)
+
+func main() {
+	mux := http.NewServeMux()
+
+	mux.Handle("/photos/{albumID}/search", gobind.Handler(PhotoAlbumSearch))
+}
+
+type PhotoFilters struct {
+	Name string `json:"name"`
+	Text string `json:"text"`
+}
+
+type PhotoAlbumSearchRequest struct {
+	Authorization   string       `header:"authorization"`
+	SearchQuery     *string      `query:"q"`
+	AlbumID         string       `path:"albumID"`
+	PhotoFilters    PhotoFilters `body:"json"`
+	PageSize        int32        `query:"page_size"`
+	IncludeMetadata *bool        `query:"include_metadata"`
+}
+
+type PhotoAlbumSearchResponse struct {
+}
+
+func PhotoAlbumSearch(ctx context.Context, req *gobind.Request[PhotoAlbumSearchRequest]) (*gobind.Response[PhotoAlbumSearchResponse], error) {
+	return &gobind.Response[PhotoAlbumSearchResponse]{}, nil
+}
