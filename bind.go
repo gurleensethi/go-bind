@@ -24,60 +24,63 @@ type Response[T any] struct {
 
 type HandlerFunc[Req any, Res any] func(context.Context, *Request[Req]) (*Response[Res], error)
 
-func Handler[Req any, Res any](fn HandlerFunc[Req, Res]) http.Handler {
-	// Sample http request //
-	httpReq, _ := http.NewRequest(http.MethodGet, "http://google.com", bytes.NewBufferString(`{ "message": "hello world!" }`))
-	httpReq.Header.Set("Authorization", "Bearer my_secret_token")
-	httpReq.SetPathValue("albumID", "123")
-	query := httpReq.URL.Query()
-	query.Set("page_size", "12")
-	query.Set("q", "search query")
-	query.Set("include_metadata", "true")
-	httpReq.URL.RawQuery = query.Encode()
-	// Sample http request //
-
+func Handler[Req any, Res any](next HandlerFunc[Req, Res]) http.Handler {
+	var isReqKindPtr bool
 	reqType := reflect.TypeFor[Req]()
-	resType := reflect.TypeFor[Res]()
-	fmt.Println("ReqType:", reqType)
-	fmt.Println("ResType:", resType)
-
-	reqPtr := reflect.New(reqType)
-	reqVal := reqPtr.Elem()
-
-	for i := 0; i < reqType.NumField(); i++ {
-		fieldType := reqType.Field(i)
-		fieldVal := reqVal.Field(i)
-
-		if !fieldVal.CanSet() {
-			continue
-		}
-
-		header, isHeader := fieldType.Tag.Lookup("header")
-		query, isQuery := fieldType.Tag.Lookup("query")
-		path, isPath := fieldType.Tag.Lookup("path")
-		body, isBody := fieldType.Tag.Lookup("body")
-
-		switch {
-		case isHeader:
-			fmt.Println(fieldType.Name, header)
-			setFieldValue(fieldVal, fieldType, httpReq.Header.Get(header))
-		case isQuery:
-			fmt.Println(fieldType.Name, query)
-			setFieldValue(fieldVal, fieldType, httpReq.URL.Query().Get(query))
-		case isPath:
-			fmt.Println(fieldType.Name, path)
-			setFieldValue(fieldVal, fieldType, httpReq.PathValue(path))
-		case isBody:
-			fmt.Println(fieldType.Name, body)
-			if httpReq.ContentLength > 0 {
-				httpReq.Body = setBodyValue(fieldVal, fieldType, httpReq.Body, body)
-			}
-		}
+	if reqType.Kind() == reflect.Pointer {
+		isReqKindPtr = true
+		reqType = reqType.Elem()
 	}
 
-	fmt.Printf("%+v\n", reqVal)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		reqPtr := reflect.New(reqType)
+		reqVal := reqPtr.Elem()
 
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
+		for i := 0; i < reqType.NumField(); i++ {
+			fieldType := reqType.Field(i)
+			fieldVal := reqVal.Field(i)
+
+			if !fieldVal.CanSet() {
+				continue
+			}
+
+			header, isHeader := fieldType.Tag.Lookup("header")
+			query, isQuery := fieldType.Tag.Lookup("query")
+			path, isPath := fieldType.Tag.Lookup("path")
+			body, isBody := fieldType.Tag.Lookup("body")
+
+			switch {
+			case isHeader:
+				setFieldValue(fieldVal, fieldType, r.Header.Get(header))
+			case isQuery:
+				setFieldValue(fieldVal, fieldType, r.URL.Query().Get(query))
+			case isPath:
+				setFieldValue(fieldVal, fieldType, r.PathValue(path))
+			case isBody:
+				if r.ContentLength > 0 {
+					r.Body = setBodyValue(fieldVal, fieldType, r.Body, body)
+				}
+			}
+		}
+
+		var req Req
+		if isReqKindPtr {
+			req = reqVal.Addr().Interface().(Req)
+		} else {
+			req = reqVal.Interface().(Req)
+		}
+
+		request := &Request[Req]{
+			Request:            req,
+			HttpRequest:        r,
+			HttpResponseWriter: w,
+		}
+
+		_, err := next(r.Context(), request)
+		if err != nil {
+			fmt.Println(err)
+		}
+	})
 }
 
 func setFieldValue(val reflect.Value, valType reflect.StructField, value string) {
@@ -114,6 +117,11 @@ func setFieldValue(val reflect.Value, valType reflect.StructField, value string)
 			if err == nil {
 				i := int32(intVal)
 				val.Set(reflect.ValueOf(&i))
+			}
+		case reflect.Int64:
+			intVal, err := strconv.ParseInt(value, 10, 64)
+			if err == nil {
+				val.Set(reflect.ValueOf(&intVal))
 			}
 		case reflect.Int:
 			intVal, err := strconv.Atoi(value)
@@ -175,17 +183,22 @@ func setFieldValue(val reflect.Value, valType reflect.StructField, value string)
 		case reflect.Int8:
 			intVal, err := strconv.ParseInt(value, 10, 8)
 			if err == nil {
-				val.Set(reflect.ValueOf(int16(intVal)))
+				val.SetInt(intVal)
 			}
 		case reflect.Int16:
 			intVal, err := strconv.ParseInt(value, 10, 16)
 			if err == nil {
-				val.Set(reflect.ValueOf(int16(intVal)))
+				val.SetInt(intVal)
 			}
 		case reflect.Int32:
 			intVal, err := strconv.ParseInt(value, 10, 32)
 			if err == nil {
-				val.Set(reflect.ValueOf(int32(intVal)))
+				val.SetInt(intVal)
+			}
+		case reflect.Int64:
+			intVal, err := strconv.ParseInt(value, 10, 64)
+			if err == nil {
+				val.SetInt(intVal)
 			}
 		case reflect.Int:
 			intVal, err := strconv.Atoi(value)
@@ -243,7 +256,7 @@ func setBodyValue(val reflect.Value, valType reflect.StructField, body io.ReadCl
 			if val.Kind() == reflect.Pointer {
 				switch val.Type().Elem().Kind() {
 				case reflect.String:
-					val.Set(reflect.ValueOf(string(bodyBytes)))
+					val.Set(reflect.ValueOf(new(string(bodyBytes))))
 				}
 			} else {
 				switch val.Kind() {
@@ -255,7 +268,6 @@ func setBodyValue(val reflect.Value, valType reflect.StructField, body io.ReadCl
 			return io.NopCloser(bytes.NewBuffer(bodyBytes))
 		}
 	case "json":
-		fmt.Println(val.Kind())
 		bodyBytes, err := io.ReadAll(body)
 		if err == nil {
 			body.Close()
