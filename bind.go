@@ -3,7 +3,9 @@ package gobind
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"reflect"
@@ -67,7 +69,9 @@ func Handler[Req any, Res any](fn HandlerFunc[Req, Res]) http.Handler {
 			setFieldValue(fieldVal, fieldType, httpReq.PathValue(path))
 		case isBody:
 			fmt.Println(fieldType.Name, body)
-			// setString(fieldVal, "123")
+			if httpReq.ContentLength > 0 {
+				httpReq.Body = setBodyValue(fieldVal, fieldType, httpReq.Body, body)
+			}
 		}
 	}
 
@@ -227,4 +231,50 @@ func setFieldValue(val reflect.Value, valType reflect.StructField, value string)
 			}
 		}
 	}
+}
+
+func setBodyValue(val reflect.Value, valType reflect.StructField, body io.ReadCloser, bodyType string) io.ReadCloser {
+	switch bodyType {
+	case "text":
+		bodyBytes, err := io.ReadAll(body)
+		if err == nil {
+			body.Close()
+
+			if val.Kind() == reflect.Pointer {
+				switch val.Type().Elem().Kind() {
+				case reflect.String:
+					val.Set(reflect.ValueOf(string(bodyBytes)))
+				}
+			} else {
+				switch val.Kind() {
+				case reflect.String:
+					val.SetString(string(bodyBytes))
+				}
+			}
+
+			return io.NopCloser(bytes.NewBuffer(bodyBytes))
+		}
+	case "json":
+		fmt.Println(val.Kind())
+		bodyBytes, err := io.ReadAll(body)
+		if err == nil {
+			body.Close()
+
+			if val.Kind() == reflect.Pointer {
+				switch val.Type().Elem().Kind() {
+				case reflect.Struct, reflect.Slice, reflect.Map:
+					err = json.Unmarshal(bodyBytes, val.Addr().Interface())
+				}
+			} else {
+				switch val.Kind() {
+				case reflect.Struct, reflect.Slice, reflect.Map:
+					err = json.Unmarshal(bodyBytes, val.Addr().Interface())
+				}
+			}
+
+			return io.NopCloser(bytes.NewBuffer(bodyBytes))
+		}
+	}
+
+	return body
 }
