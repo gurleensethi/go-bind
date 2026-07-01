@@ -57,7 +57,7 @@ func Handler[Req any, Res any](next HandlerFunc[Req, Res]) http.Handler {
 			case isPath:
 				setFieldValue(fieldVal, fieldType, r.PathValue(path))
 			case isBody:
-				if r.ContentLength > 0 {
+				if r.Body != nil {
 					r.Body = setBodyValue(fieldVal, fieldType, r.Body, body)
 				}
 			}
@@ -137,44 +137,20 @@ func setScalar(val reflect.Value, value string) {
 	}
 }
 
-func setBodyValue(val reflect.Value, valType reflect.StructField, body io.ReadCloser, bodyType string) io.ReadCloser {
+func setBodyValue(val reflect.Value, fieldType reflect.StructField, body io.ReadCloser, bodyType string) io.ReadCloser {
 	switch bodyType {
 	case "text":
 		bodyBytes, err := io.ReadAll(body)
 		if err == nil {
 			body.Close()
-
-			if val.Kind() == reflect.Pointer {
-				switch val.Type().Elem().Kind() {
-				case reflect.String:
-					val.Set(reflect.ValueOf(new(string(bodyBytes))))
-				}
-			} else {
-				switch val.Kind() {
-				case reflect.String:
-					val.SetString(string(bodyBytes))
-				}
-			}
-
+			setFieldValue(val, fieldType, string(bodyBytes))
 			return io.NopCloser(bytes.NewBuffer(bodyBytes))
 		}
 	case "json":
 		bodyBytes, err := io.ReadAll(body)
 		if err == nil {
 			body.Close()
-
-			if val.Kind() == reflect.Pointer {
-				switch val.Type().Elem().Kind() {
-				case reflect.Struct, reflect.Slice, reflect.Map:
-					err = json.Unmarshal(bodyBytes, val.Addr().Interface())
-				}
-			} else {
-				switch val.Kind() {
-				case reflect.Struct, reflect.Slice, reflect.Map:
-					err = json.Unmarshal(bodyBytes, val.Addr().Interface())
-				}
-			}
-
+			err = json.Unmarshal(bodyBytes, val.Addr().Interface())
 			return io.NopCloser(bytes.NewBuffer(bodyBytes))
 		}
 	}

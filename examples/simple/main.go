@@ -37,6 +37,5 @@ type PhotoAlbumSearchResponse struct {
 
 func PhotoAlbumSearch(ctx context.Context, req *gobind.Request[PhotoAlbumSearchRequest]) (*gobind.Response[PhotoAlbumSearchResponse], error) {
 	fmt.Printf("%+v\n", req.Request)
-
 	return &gobind.Response[PhotoAlbumSearchResponse]{}, nil
 }
