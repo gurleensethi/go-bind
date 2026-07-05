@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net/http"
 
 	gobind "github.com/gurleensethi/go-bind"
@@ -13,6 +14,7 @@ func main() {
 
 	mux.Handle("/photos/{albumID}/search", gobind.Handler(PhotoAlbumSearch))
 
+	slog.Info("running server on 9876")
 	http.ListenAndServe(":9876", mux)
 }
 
@@ -32,10 +34,28 @@ type PhotoAlbumSearchRequest struct {
 	IncludeMetadata      *bool         `query:"include_metadata"`
 }
 
+type Album struct {
+	Name      string `json:"name"`
+	NumPhotos int    `json:"numPhotos"`
+}
+
 type PhotoAlbumSearchResponse struct {
+	CacheHit int     `header:"X-Cache-Hits"`
+	Albums   []Album `body:"json"`
 }
 
 func PhotoAlbumSearch(ctx context.Context, req *gobind.Request[PhotoAlbumSearchRequest]) (*gobind.Response[PhotoAlbumSearchResponse], error) {
 	fmt.Printf("%+v\n", req.Request)
-	return &gobind.Response[PhotoAlbumSearchResponse]{}, nil
+
+	return &gobind.Response[PhotoAlbumSearchResponse]{
+		Response: PhotoAlbumSearchResponse{
+			CacheHit: 1,
+			Albums: []Album{
+				{
+					Name:      "demo album",
+					NumPhotos: 10,
+				},
+			},
+		},
+	}, nil
 }

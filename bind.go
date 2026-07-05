@@ -6,10 +6,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log/slog"
 	"net/http"
 	"reflect"
 	"strconv"
+	"strings"
 )
 
 type Request[T any] struct {
@@ -22,15 +22,19 @@ type Response[T any] struct {
 	Response T
 }
 
-type HandlerFunc[Req any, Res any] func(context.Context, *Request[Req]) (*Response[Res], error)
+type HandlerFunc[Req any, Resp any] func(context.Context, *Request[Req]) (*Response[Resp], error)
 
-func Handler[Req any, Res any](next HandlerFunc[Req, Res]) http.Handler {
+func Handler[Req any, Resp any](next HandlerFunc[Req, Resp]) http.Handler {
+	// Request
 	var isReqKindPtr bool
 	reqType := reflect.TypeFor[Req]()
 	if reqType.Kind() == reflect.Pointer {
 		isReqKindPtr = true
 		reqType = reqType.Elem()
 	}
+
+	// Response
+	respType := reflect.TypeFor[Resp]()
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		reqPtr := reflect.New(reqType)
@@ -48,6 +52,7 @@ func Handler[Req any, Res any](next HandlerFunc[Req, Res]) http.Handler {
 			query, isQuery := fieldType.Tag.Lookup("query")
 			path, isPath := fieldType.Tag.Lookup("path")
 			body, isBody := fieldType.Tag.Lookup("body")
+			// TODO: Handle dedicated cookie tag
 
 			switch {
 			case isHeader:
@@ -76,9 +81,56 @@ func Handler[Req any, Res any](next HandlerFunc[Req, Res]) http.Handler {
 			HttpResponseWriter: w,
 		}
 
-		_, err := next(r.Context(), request)
+		resp, err := next(r.Context(), request)
 		if err != nil {
 			fmt.Println(err)
+		}
+
+		// Make sure we are getting back the exact response type.
+		gotRespType := reflect.TypeOf(resp.Response)
+		if gotRespType != respType {
+			panic(fmt.Sprintf("expected response type of %s, but got %s", respType.Name(), gotRespType.Name()))
+		}
+
+		respVal := reflect.ValueOf(resp.Response)
+
+		// Collect all headers
+		headers := http.Header{}
+		respBody := []byte{}
+
+		for i := 0; i < respVal.NumField(); i++ {
+			fieldType := respType.Field(i)
+			fieldVal := respVal.Field(i)
+
+			header, isHeader := fieldType.Tag.Lookup("header")
+			body, isBody := fieldType.Tag.Lookup("body")
+
+			switch {
+			case isHeader:
+				valueAsString, ok := getFieldValueAsString(fieldVal)
+				if ok {
+					headers[header] = append(headers[header], valueAsString)
+				}
+			case isBody:
+				b, contentType := getResponseBody(fieldVal, body)
+				if b != nil {
+					if contentType != "" {
+						w.Header().Set("Content-Type", contentType)
+					}
+
+					respBody = b
+				}
+			}
+		}
+
+		// Apply headers to response
+		for key, val := range headers {
+			w.Header().Set(key, strings.Join(val, ", "))
+		}
+
+		// Write body
+		if respBody != nil {
+			w.Write(respBody)
 		}
 	})
 }
@@ -107,24 +159,12 @@ func setScalar(val reflect.Value, value string) {
 		if err == nil {
 			val.SetBool(boolVal)
 		}
-	case reflect.Int:
-		intVal, err := strconv.Atoi(value)
-		if err == nil {
-			val.SetInt(int64(intVal))
-		} else {
-			slog.Warn(value + " is not int")
-		}
-	case reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		intVal, err := strconv.ParseInt(value, 10, val.Type().Bits())
 		if err == nil {
 			val.SetInt(intVal)
 		}
-	case reflect.Uint:
-		uintVal, err := strconv.ParseUint(value, 10, 0)
-		if err == nil {
-			val.SetUint(uintVal)
-		}
-	case reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
 		uintVal, err := strconv.ParseUint(value, 10, val.Type().Bits())
 		if err == nil {
 			val.SetUint(uintVal)
@@ -135,6 +175,31 @@ func setScalar(val reflect.Value, value string) {
 			val.SetFloat(floatVal)
 		}
 	}
+}
+
+func getFieldValueAsString(val reflect.Value) (string, bool) {
+	if val.Kind() == reflect.Pointer {
+		if val.IsNil() {
+			return "", false
+		}
+
+		val = val.Elem()
+	}
+
+	switch val.Kind() {
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return strconv.FormatInt(val.Int(), 10), true
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		return strconv.FormatUint(val.Uint(), 10), true
+	case reflect.Bool:
+		return strconv.FormatBool(val.Bool()), true
+	case reflect.Float32, reflect.Float64:
+		return strconv.FormatFloat(val.Float(), 'f', -1, val.Type().Bits()), true
+	case reflect.String:
+		return val.String(), true
+	}
+
+	return "", true
 }
 
 func setBodyValue(val reflect.Value, fieldType reflect.StructField, body io.ReadCloser, bodyType string) io.ReadCloser {
@@ -153,7 +218,32 @@ func setBodyValue(val reflect.Value, fieldType reflect.StructField, body io.Read
 			err = json.Unmarshal(bodyBytes, val.Addr().Interface())
 			return io.NopCloser(bytes.NewBuffer(bodyBytes))
 		}
+		// TODO: handle x-www-form-urlencoded
+		// TODO: handle multipart/form-data
 	}
 
 	return body
+}
+
+func getResponseBody(val reflect.Value, bodyType string) ([]byte, string) {
+	if val.Kind() == reflect.Pointer {
+		if val.IsNil() {
+			return nil, ""
+		}
+
+		val = val.Elem()
+	}
+
+	switch bodyType {
+	case "text":
+		valueAsString, _ := getFieldValueAsString(val)
+		return []byte(valueAsString), "text/plain; charset=utf-8"
+	case "json":
+		body, err := json.Marshal(val.Interface())
+		if err == nil {
+			return body, "application/json; charset=utf-8"
+		}
+	}
+
+	return nil, ""
 }
