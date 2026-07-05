@@ -2,6 +2,8 @@
 
 Skip the request parsing and response serialization boilerplate in Go using struct tags.
 
+# Full example
+
 ```go
 import (
     "context"
