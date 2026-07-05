@@ -104,6 +104,7 @@ func Handler[Req any, Resp any](next HandlerFunc[Req, Resp]) http.Handler {
 
 			header, isHeader := fieldType.Tag.Lookup("header")
 			body, isBody := fieldType.Tag.Lookup("body")
+			cookie, isCookie := fieldType.Tag.Lookup("cookie")
 
 			switch {
 			case isHeader:
@@ -119,6 +120,11 @@ func Handler[Req any, Resp any](next HandlerFunc[Req, Resp]) http.Handler {
 					}
 
 					respBody = b
+				}
+			case isCookie:
+				httpCookie := getCookiesFromFieldVal(fieldVal, cookie)
+				if httpCookie != nil {
+					http.SetCookie(w, httpCookie)
 				}
 			}
 		}
@@ -254,4 +260,31 @@ func getResponseBody(val reflect.Value, bodyType string) ([]byte, string) {
 	// TODO: add support for custom marshalers
 
 	return nil, ""
+}
+
+// getCookiesFromFieldVal returns a cookie from the provided reflect.Value,
+// Only supports string and struct(of type http.Cookie) as valid types to fetch values from.
+func getCookiesFromFieldVal(val reflect.Value, name string) *http.Cookie {
+	if val.Kind() == reflect.Pointer {
+		if val.IsNil() {
+			return nil
+		}
+
+		val = val.Elem()
+	}
+
+	switch val.Kind() {
+	case reflect.String:
+		return &http.Cookie{
+			Name:  name,
+			Value: val.String(),
+		}
+	case reflect.Struct:
+		if val.Type() == reflect.TypeFor[http.Cookie]() {
+			httpCookie := val.Interface().(http.Cookie)
+			return &httpCookie
+		}
+	}
+
+	return nil
 }
