@@ -19,7 +19,8 @@ type Request[T any] struct {
 }
 
 type Response[T any] struct {
-	Response T
+	StatusCode int
+	Response   T
 }
 
 type HandlerFunc[Req any, Resp any] func(context.Context, *Request[Req]) (*Response[Resp], error)
@@ -121,6 +122,10 @@ func Handler[Req any, Resp any](next HandlerFunc[Req, Resp]) http.Handler {
 					respBody = b
 				}
 			}
+		}
+
+		if resp.StatusCode != 0 {
+			w.WriteHeader(resp.StatusCode)
 		}
 
 		// Apply headers to response
