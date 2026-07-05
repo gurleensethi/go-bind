@@ -11,10 +11,14 @@ import (
 	"strconv"
 )
 
+type Http struct {
+	R *http.Request
+	W http.ResponseWriter
+}
+
 type Request[T any] struct {
-	Request            T
-	HttpRequest        *http.Request
-	HttpResponseWriter http.ResponseWriter
+	Request T
+	Http    Http
 }
 
 type Response[T any] struct {
@@ -76,9 +80,11 @@ func Handler[Req any, Resp any](next HandlerFunc[Req, Resp]) http.Handler {
 		}
 
 		request := &Request[Req]{
-			Request:            req,
-			HttpRequest:        r,
-			HttpResponseWriter: w,
+			Request: req,
+			Http: Http{
+				R: r,
+				W: w,
+			},
 		}
 
 		resp, err := next(r.Context(), request)
