@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"reflect"
 	"strconv"
-	"strings"
 )
 
 type Request[T any] struct {
@@ -124,13 +123,15 @@ func Handler[Req any, Resp any](next HandlerFunc[Req, Resp]) http.Handler {
 			}
 		}
 
-		if resp.StatusCode != 0 {
-			w.WriteHeader(resp.StatusCode)
+		// Apply headers to response
+		for key, values := range headers {
+			for _, value := range values {
+				w.Header().Add(key, value)
+			}
 		}
 
-		// Apply headers to response
-		for key, val := range headers {
-			w.Header().Set(key, strings.Join(val, ", "))
+		if resp.StatusCode != 0 {
+			w.WriteHeader(resp.StatusCode)
 		}
 
 		// Write body
@@ -249,6 +250,8 @@ func getResponseBody(val reflect.Value, bodyType string) ([]byte, string) {
 			return body, "application/json; charset=utf-8"
 		}
 	}
+	// TODO: add support for xml
+	// TODO: add support for custom marshalers
 
 	return nil, ""
 }
