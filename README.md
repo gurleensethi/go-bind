@@ -61,7 +61,7 @@ func PhotoSearchHandler(ctx context.Context, req *gobind.Request[PhotoSearchRequ
 
 func main() {
     mux := http.NewServeMux()
-    mux.Handle("/albums/{albumID}/search", gobind.Handler(PhotoSearchHandler))
+    mux.Handle("GET /albums/{albumID}/search", gobind.Handler(PhotoSearchHandler))
     http.ListenAndServe(":9876", mux)
 }
 ```
