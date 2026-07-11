@@ -32,6 +32,7 @@ type PhotoAlbumSearchRequest struct {
 	PageSize             int8          `query:"page_size"`
 	PageSizeFloat        float32       `query:"page_size"`
 	IncludeMetadata      *bool         `query:"include_metadata"`
+	SessionCookie        string        `cookie:"session"`
 }
 
 type Album struct {

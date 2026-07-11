@@ -33,9 +33,6 @@ type TypeField struct {
 	// FieldType is the type of the field at index
 	FieldType reflect.StructField
 
-	// FieldIndex is the index of the field
-	FieldIndex int
-
 	// FieldValueType is the type of value
 	FieldValueType string
 
@@ -95,28 +92,24 @@ func Handler[Req any, Resp any](next HandlerFunc[Req, Resp]) http.Handler {
 		case isHeader:
 			requestType.Fields = append(requestType.Fields, TypeField{
 				FieldType:      fieldType,
-				FieldIndex:     i,
 				FieldValueType: "header",
 				FieldValue:     header,
 			})
 		case isQuery:
 			requestType.Fields = append(requestType.Fields, TypeField{
 				FieldType:      fieldType,
-				FieldIndex:     i,
 				FieldValueType: "query",
 				FieldValue:     query,
 			})
 		case isPath:
 			requestType.Fields = append(requestType.Fields, TypeField{
 				FieldType:      fieldType,
-				FieldIndex:     i,
 				FieldValueType: "path",
 				FieldValue:     path,
 			})
 		case isBody:
 			requestType.Fields = append(requestType.Fields, TypeField{
 				FieldType:      fieldType,
-				FieldIndex:     i,
 				FieldValueType: "body",
 				FieldValue:     body,
 			})
@@ -139,21 +132,18 @@ func Handler[Req any, Resp any](next HandlerFunc[Req, Resp]) http.Handler {
 		switch {
 		case isHeader:
 			responseType.Fields = append(responseType.Fields, TypeField{
-				FieldIndex:     i,
 				FieldType:      fieldType,
 				FieldValueType: "header",
 				FieldValue:     header,
 			})
 		case isBody:
 			responseType.Fields = append(responseType.Fields, TypeField{
-				FieldIndex:     i,
 				FieldType:      fieldType,
 				FieldValueType: "body",
 				FieldValue:     body,
 			})
 		case isCookie:
 			responseType.Fields = append(responseType.Fields, TypeField{
-				FieldIndex:     i,
 				FieldType:      fieldType,
 				FieldValueType: "cookie",
 				FieldValue:     cookie,
@@ -170,7 +160,7 @@ func Handler[Req any, Resp any](next HandlerFunc[Req, Resp]) http.Handler {
 		t, ok := typeMap.Get(reqType)
 		if ok {
 			for _, field := range t.Fields {
-				fieldVal := reqVal.Field(field.FieldIndex)
+				fieldVal := reqVal.FieldByIndex(field.FieldType.Index)
 
 				if !fieldVal.CanSet() {
 					continue
@@ -226,7 +216,7 @@ func Handler[Req any, Resp any](next HandlerFunc[Req, Resp]) http.Handler {
 		responseType, ok := typeMap.Get(respType)
 		if ok {
 			for _, field := range responseType.Fields {
-				fieldVal := respVal.Field(field.FieldIndex)
+				fieldVal := respVal.FieldByIndex(field.FieldType.Index)
 
 				switch field.FieldValueType {
 				case "header":
