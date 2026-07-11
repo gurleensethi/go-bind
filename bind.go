@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"reflect"
 	"strconv"
+	"sync"
 )
 
 type Http struct {
@@ -28,6 +29,48 @@ type Response[T any] struct {
 
 type HandlerFunc[Req any, Resp any] func(context.Context, *Request[Req]) (*Response[Resp], error)
 
+type TypeField struct {
+	// FieldType is the type of the field at index
+	FieldType reflect.StructField
+
+	// FieldIndex is the index of the field
+	FieldIndex int
+
+	// FieldValueType is the type of value
+	FieldValueType string
+
+	// FieldValue
+	FieldValue string
+}
+
+type Type struct {
+	Fields []TypeField
+}
+
+type TypeMap struct {
+	m       *sync.Mutex
+	typeMap map[reflect.Type]Type
+}
+
+func (rm *TypeMap) AddType(reflectType reflect.Type, t Type) {
+	rm.m.Lock()
+	defer rm.m.Unlock()
+
+	rm.typeMap[reflectType] = t
+}
+
+func (rm *TypeMap) Get(reflectType reflect.Type) (Type, bool) {
+	val, ok := rm.typeMap[reflectType]
+	return val, ok
+}
+
+var (
+	typeMap = TypeMap{
+		m:       &sync.Mutex{},
+		typeMap: make(map[reflect.Type]Type),
+	}
+)
+
 func Handler[Req any, Resp any](next HandlerFunc[Req, Resp]) http.Handler {
 	// Request
 	var isReqKindPtr bool
@@ -37,37 +80,113 @@ func Handler[Req any, Resp any](next HandlerFunc[Req, Resp]) http.Handler {
 		reqType = reqType.Elem()
 	}
 
+	requestType := Type{}
+
+	for i := 0; i < reqType.NumField(); i++ {
+		fieldType := reqType.Field(i)
+
+		header, isHeader := fieldType.Tag.Lookup("header")
+		query, isQuery := fieldType.Tag.Lookup("query")
+		path, isPath := fieldType.Tag.Lookup("path")
+		body, isBody := fieldType.Tag.Lookup("body")
+		// TODO: Handle dedicated cookie tag
+
+		switch {
+		case isHeader:
+			requestType.Fields = append(requestType.Fields, TypeField{
+				FieldType:      fieldType,
+				FieldIndex:     i,
+				FieldValueType: "header",
+				FieldValue:     header,
+			})
+		case isQuery:
+			requestType.Fields = append(requestType.Fields, TypeField{
+				FieldType:      fieldType,
+				FieldIndex:     i,
+				FieldValueType: "query",
+				FieldValue:     query,
+			})
+		case isPath:
+			requestType.Fields = append(requestType.Fields, TypeField{
+				FieldType:      fieldType,
+				FieldIndex:     i,
+				FieldValueType: "path",
+				FieldValue:     path,
+			})
+		case isBody:
+			requestType.Fields = append(requestType.Fields, TypeField{
+				FieldType:      fieldType,
+				FieldIndex:     i,
+				FieldValueType: "body",
+				FieldValue:     body,
+			})
+		}
+	}
+
+	typeMap.AddType(reqType, requestType)
+
 	// Response
 	respType := reflect.TypeFor[Resp]()
+	responseType := Type{}
+
+	for i := 0; i < respType.NumField(); i++ {
+		fieldType := respType.Field(i)
+
+		header, isHeader := fieldType.Tag.Lookup("header")
+		body, isBody := fieldType.Tag.Lookup("body")
+		cookie, isCookie := fieldType.Tag.Lookup("cookie")
+
+		switch {
+		case isHeader:
+			responseType.Fields = append(responseType.Fields, TypeField{
+				FieldIndex:     i,
+				FieldType:      fieldType,
+				FieldValueType: "header",
+				FieldValue:     header,
+			})
+		case isBody:
+			responseType.Fields = append(responseType.Fields, TypeField{
+				FieldIndex:     i,
+				FieldType:      fieldType,
+				FieldValueType: "body",
+				FieldValue:     body,
+			})
+		case isCookie:
+			responseType.Fields = append(responseType.Fields, TypeField{
+				FieldIndex:     i,
+				FieldType:      fieldType,
+				FieldValueType: "cookie",
+				FieldValue:     cookie,
+			})
+		}
+	}
+
+	typeMap.AddType(respType, responseType)
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		reqPtr := reflect.New(reqType)
 		reqVal := reqPtr.Elem()
 
-		for i := 0; i < reqType.NumField(); i++ {
-			fieldType := reqType.Field(i)
-			fieldVal := reqVal.Field(i)
+		t, ok := typeMap.Get(reqType)
+		if ok {
+			for _, field := range t.Fields {
+				fieldVal := reqVal.Field(field.FieldIndex)
 
-			if !fieldVal.CanSet() {
-				continue
-			}
+				if !fieldVal.CanSet() {
+					continue
+				}
 
-			header, isHeader := fieldType.Tag.Lookup("header")
-			query, isQuery := fieldType.Tag.Lookup("query")
-			path, isPath := fieldType.Tag.Lookup("path")
-			body, isBody := fieldType.Tag.Lookup("body")
-			// TODO: Handle dedicated cookie tag
-
-			switch {
-			case isHeader:
-				setFieldValue(fieldVal, fieldType, r.Header.Get(header))
-			case isQuery:
-				setFieldValue(fieldVal, fieldType, r.URL.Query().Get(query))
-			case isPath:
-				setFieldValue(fieldVal, fieldType, r.PathValue(path))
-			case isBody:
-				if r.Body != nil {
-					r.Body = setBodyValue(fieldVal, fieldType, r.Body, body)
+				switch field.FieldValueType {
+				case "header":
+					setFieldValue(fieldVal, field.FieldType, r.Header.Get(field.FieldValue))
+				case "query":
+					setFieldValue(fieldVal, field.FieldType, r.URL.Query().Get(field.FieldValue))
+				case "path":
+					setFieldValue(fieldVal, field.FieldType, r.PathValue(field.FieldValue))
+				case "body":
+					if r.Body != nil {
+						r.Body = setBodyValue(fieldVal, field.FieldType, r.Body, field.FieldValue)
+					}
 				}
 			}
 		}
@@ -104,33 +223,31 @@ func Handler[Req any, Resp any](next HandlerFunc[Req, Resp]) http.Handler {
 		headers := http.Header{}
 		respBody := []byte{}
 
-		for i := 0; i < respVal.NumField(); i++ {
-			fieldType := respType.Field(i)
-			fieldVal := respVal.Field(i)
+		responseType, ok := typeMap.Get(respType)
+		if ok {
+			for _, field := range responseType.Fields {
+				fieldVal := respVal.Field(field.FieldIndex)
 
-			header, isHeader := fieldType.Tag.Lookup("header")
-			body, isBody := fieldType.Tag.Lookup("body")
-			cookie, isCookie := fieldType.Tag.Lookup("cookie")
-
-			switch {
-			case isHeader:
-				valueAsString, ok := getFieldValueAsString(fieldVal)
-				if ok {
-					headers[header] = append(headers[header], valueAsString)
-				}
-			case isBody:
-				b, contentType := getResponseBody(fieldVal, body)
-				if b != nil {
-					if contentType != "" {
-						w.Header().Set("Content-Type", contentType)
+				switch field.FieldValueType {
+				case "header":
+					valueAsString, ok := getFieldValueAsString(fieldVal)
+					if ok {
+						headers[field.FieldValue] = append(headers[field.FieldValue], valueAsString)
 					}
+				case "body":
+					b, contentType := getResponseBody(fieldVal, field.FieldValue)
+					if b != nil {
+						if contentType != "" {
+							w.Header().Set("Content-Type", contentType)
+						}
 
-					respBody = b
-				}
-			case isCookie:
-				httpCookie := getCookiesFromFieldVal(fieldVal, cookie)
-				if httpCookie != nil {
-					http.SetCookie(w, httpCookie)
+						respBody = b
+					}
+				case "cookie":
+					httpCookie := getCookiesFromFieldVal(fieldVal, field.FieldValue)
+					if httpCookie != nil {
+						http.SetCookie(w, httpCookie)
+					}
 				}
 			}
 		}

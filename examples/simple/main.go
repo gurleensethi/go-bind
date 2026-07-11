@@ -43,7 +43,7 @@ type PhotoAlbumSearchResponse struct {
 	CacheHit int          `header:"X-Cache-Hits"`
 	Albums   []Album      `body:"json"`
 	Session  *http.Cookie `cookie:"session"`
-	Token    *http.Cookie `cookie:"token"`
+	Token    string       `cookie:"token"`
 }
 
 func PhotoAlbumSearch(ctx context.Context, req *gobind.Request[PhotoAlbumSearchRequest]) (*gobind.Response[PhotoAlbumSearchResponse], error) {
@@ -63,11 +63,7 @@ func PhotoAlbumSearch(ctx context.Context, req *gobind.Request[PhotoAlbumSearchR
 				Value: "123",
 				Path:  "/",
 			},
-			Token: &http.Cookie{
-				Name:  "token",
-				Value: "123",
-				Path:  "/",
-			},
+			Token: "token-123",
 		},
 	}, nil
 }
