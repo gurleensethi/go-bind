@@ -29,42 +29,41 @@ type Response[T any] struct {
 
 type HandlerFunc[Req any, Resp any] func(context.Context, *Request[Req]) (*Response[Resp], error)
 
-type TypeField struct {
-	// FieldType is the type of the field at index
-	FieldType reflect.StructField
+type FieldBinding struct {
+	// Field is the struct field metadata
+	Field reflect.StructField
 
-	// FieldValueType is the type of value
-	FieldValueType string
+	// TagType is the binding source type (header, query, path, body, cookie)
+	TagType string
 
-	// FieldValue
-	FieldValue string
+	// TagValue is the tag value (e.g., header name, query param name)
+	TagValue string
 }
 
-type Type struct {
-	Fields []TypeField
+type StructBinding struct {
+	Fields []FieldBinding
 }
 
-type TypeMap struct {
+type BindingCache struct {
 	m       *sync.Mutex
-	typeMap map[reflect.Type]Type
+	cache   map[reflect.Type]StructBinding
 }
 
-func (rm *TypeMap) AddType(reflectType reflect.Type, t Type) {
-	rm.m.Lock()
-	defer rm.m.Unlock()
-
-	rm.typeMap[reflectType] = t
+func (c *BindingCache) Set(t reflect.Type, b StructBinding) {
+	c.m.Lock()
+	defer c.m.Unlock()
+	c.cache[t] = b
 }
 
-func (rm *TypeMap) Get(reflectType reflect.Type) (Type, bool) {
-	val, ok := rm.typeMap[reflectType]
-	return val, ok
+func (c *BindingCache) Get(t reflect.Type) (StructBinding, bool) {
+	b, ok := c.cache[t]
+	return b, ok
 }
 
 var (
-	typeMap = TypeMap{
+	bindingCache = BindingCache{
 		m:       &sync.Mutex{},
-		typeMap: make(map[reflect.Type]Type),
+		cache:   make(map[reflect.Type]StructBinding),
 	}
 )
 
@@ -77,106 +76,82 @@ func Handler[Req any, Resp any](next HandlerFunc[Req, Resp]) http.Handler {
 		reqType = reqType.Elem()
 	}
 
-	requestType := Type{}
+	requestBinding := StructBinding{}
 
 	for i := 0; i < reqType.NumField(); i++ {
-		fieldType := reqType.Field(i)
+		field := reqType.Field(i)
 
-		header, isHeader := fieldType.Tag.Lookup("header")
-		query, isQuery := fieldType.Tag.Lookup("query")
-		path, isPath := fieldType.Tag.Lookup("path")
-		body, isBody := fieldType.Tag.Lookup("body")
-		// TODO: Handle dedicated cookie tag
+		header, isHeader := field.Tag.Lookup("header")
+		query, isQuery := field.Tag.Lookup("query")
+		path, isPath := field.Tag.Lookup("path")
+		body, isBody := field.Tag.Lookup("body")
+		cookie, isCookie := field.Tag.Lookup("cookie")
 
 		switch {
 		case isHeader:
-			requestType.Fields = append(requestType.Fields, TypeField{
-				FieldType:      fieldType,
-				FieldValueType: "header",
-				FieldValue:     header,
-			})
+			requestBinding.Fields = append(requestBinding.Fields, FieldBinding{Field: field, TagType: "header", TagValue: header})
 		case isQuery:
-			requestType.Fields = append(requestType.Fields, TypeField{
-				FieldType:      fieldType,
-				FieldValueType: "query",
-				FieldValue:     query,
-			})
+			requestBinding.Fields = append(requestBinding.Fields, FieldBinding{Field: field, TagType: "query", TagValue: query})
 		case isPath:
-			requestType.Fields = append(requestType.Fields, TypeField{
-				FieldType:      fieldType,
-				FieldValueType: "path",
-				FieldValue:     path,
-			})
+			requestBinding.Fields = append(requestBinding.Fields, FieldBinding{Field: field, TagType: "path", TagValue: path})
 		case isBody:
-			requestType.Fields = append(requestType.Fields, TypeField{
-				FieldType:      fieldType,
-				FieldValueType: "body",
-				FieldValue:     body,
-			})
+			requestBinding.Fields = append(requestBinding.Fields, FieldBinding{Field: field, TagType: "body", TagValue: body})
+		case isCookie:
+			requestBinding.Fields = append(requestBinding.Fields, FieldBinding{Field: field, TagType: "cookie", TagValue: cookie})
 		}
 	}
 
-	typeMap.AddType(reqType, requestType)
+	bindingCache.Set(reqType, requestBinding)
 
 	// Response
 	respType := reflect.TypeFor[Resp]()
-	responseType := Type{}
+	responseBinding := StructBinding{}
 
 	for i := 0; i < respType.NumField(); i++ {
-		fieldType := respType.Field(i)
+		field := respType.Field(i)
 
-		header, isHeader := fieldType.Tag.Lookup("header")
-		body, isBody := fieldType.Tag.Lookup("body")
-		cookie, isCookie := fieldType.Tag.Lookup("cookie")
+		header, isHeader := field.Tag.Lookup("header")
+		body, isBody := field.Tag.Lookup("body")
+		cookie, isCookie := field.Tag.Lookup("cookie")
 
 		switch {
 		case isHeader:
-			responseType.Fields = append(responseType.Fields, TypeField{
-				FieldType:      fieldType,
-				FieldValueType: "header",
-				FieldValue:     header,
-			})
+			responseBinding.Fields = append(responseBinding.Fields, FieldBinding{Field: field, TagType: "header", TagValue: header})
 		case isBody:
-			responseType.Fields = append(responseType.Fields, TypeField{
-				FieldType:      fieldType,
-				FieldValueType: "body",
-				FieldValue:     body,
-			})
+			responseBinding.Fields = append(responseBinding.Fields, FieldBinding{Field: field, TagType: "body", TagValue: body})
 		case isCookie:
-			responseType.Fields = append(responseType.Fields, TypeField{
-				FieldType:      fieldType,
-				FieldValueType: "cookie",
-				FieldValue:     cookie,
-			})
+			responseBinding.Fields = append(responseBinding.Fields, FieldBinding{Field: field, TagType: "cookie", TagValue: cookie})
 		}
 	}
 
-	typeMap.AddType(respType, responseType)
+	bindingCache.Set(respType, responseBinding)
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		reqPtr := reflect.New(reqType)
 		reqVal := reqPtr.Elem()
 
-		t, ok := typeMap.Get(reqType)
+		b, ok := bindingCache.Get(reqType)
 		if ok {
-			for _, field := range t.Fields {
-				fieldVal := reqVal.FieldByIndex(field.FieldType.Index)
+			for _, field := range b.Fields {
+				fieldVal := reqVal.FieldByIndex(field.Field.Index)
 
 				if !fieldVal.CanSet() {
 					continue
 				}
 
-				switch field.FieldValueType {
+				switch field.TagType {
 				case "header":
-					setFieldValue(fieldVal, field.FieldType, r.Header.Get(field.FieldValue))
+					setFieldValue(fieldVal, field.Field, r.Header.Get(field.TagValue))
 				case "query":
-					setFieldValue(fieldVal, field.FieldType, r.URL.Query().Get(field.FieldValue))
+					setFieldValue(fieldVal, field.Field, r.URL.Query().Get(field.TagValue))
 				case "path":
-					setFieldValue(fieldVal, field.FieldType, r.PathValue(field.FieldValue))
+					setFieldValue(fieldVal, field.Field, r.PathValue(field.TagValue))
 				case "body":
 					if r.Body != nil {
-						r.Body = setBodyValue(fieldVal, field.FieldType, r.Body, field.FieldValue)
+						r.Body = setBodyValue(fieldVal, field.Field, r.Body, field.TagValue)
 					}
+				case "cookie":
+					setFieldValue(fieldVal, field.Field, getCookieValue(r, field.TagValue))
 				}
 			}
 		}
@@ -213,19 +188,19 @@ func Handler[Req any, Resp any](next HandlerFunc[Req, Resp]) http.Handler {
 		headers := http.Header{}
 		respBody := []byte{}
 
-		responseType, ok := typeMap.Get(respType)
+		respBinding, ok := bindingCache.Get(respType)
 		if ok {
-			for _, field := range responseType.Fields {
-				fieldVal := respVal.FieldByIndex(field.FieldType.Index)
+			for _, field := range respBinding.Fields {
+				fieldVal := respVal.FieldByIndex(field.Field.Index)
 
-				switch field.FieldValueType {
+				switch field.TagType {
 				case "header":
 					valueAsString, ok := getFieldValueAsString(fieldVal)
 					if ok {
-						headers[field.FieldValue] = append(headers[field.FieldValue], valueAsString)
+						headers[field.TagValue] = append(headers[field.TagValue], valueAsString)
 					}
 				case "body":
-					b, contentType := getResponseBody(fieldVal, field.FieldValue)
+					b, contentType := getResponseBody(fieldVal, field.TagValue)
 					if b != nil {
 						if contentType != "" {
 							w.Header().Set("Content-Type", contentType)
@@ -234,7 +209,7 @@ func Handler[Req any, Resp any](next HandlerFunc[Req, Resp]) http.Handler {
 						respBody = b
 					}
 				case "cookie":
-					httpCookie := getCookiesFromFieldVal(fieldVal, field.FieldValue)
+					httpCookie := getCookiesFromFieldVal(fieldVal, field.TagValue)
 					if httpCookie != nil {
 						http.SetCookie(w, httpCookie)
 					}
@@ -325,6 +300,14 @@ func getFieldValueAsString(val reflect.Value) (string, bool) {
 	}
 
 	return "", true
+}
+
+func getCookieValue(r *http.Request, name string) string {
+	cookie, err := r.Cookie(name)
+	if err != nil {
+		return ""
+	}
+	return cookie.Value
 }
 
 func setBodyValue(val reflect.Value, fieldType reflect.StructField, body io.ReadCloser, bodyType string) io.ReadCloser {
