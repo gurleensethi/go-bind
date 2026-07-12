@@ -18,11 +18,13 @@ type PhotoSearchRequest struct {
     IncludeMetadata bool   `query:"include_metadata"`
     PageSize        int    `query:"page_size"`
     Page            int    `query:"page"`
+    SessionID       string `cookie:"session_id"`
 }
 
 type PhotoSearchResponse struct {
     Result    PhotosSearchResult `body:"json"`
     RateLimit int                `header:"X-Rate-Limit"`
+    Token     string             `cookie:"token"`
 }
 
 type PhotosSearchResult struct {
@@ -41,16 +43,18 @@ func PhotoSearchHandler(ctx context.Context, req *gobind.Request[PhotoSearchRequ
     req.Request.IncludeMetadata // (query:"include_metadata")
     req.Request.PageSize        // (query:"page_size")
     req.Request.Page            // (query:"page")
+    req.Request.SessionID       // (cookie:"session_id")
 
     // Access raw HTTP types if needed
-    req.Http.R  // *http.Request
-    req.Http.W  // http.ResponseWriter
+    req.Http.R // *http.Request
+    req.Http.W // http.ResponseWriter
 
     // Response automatically serialized and written
     return &gobind.Response[PhotoSearchResponse]{
         StatusCode: http.StatusOK,
         Response: PhotoSearchResponse{
             RateLimit: 60,
+            Token:     "abc-123",
             Result: PhotosSearchResult{
                 Photos:     []Photo{{Name: "photo1.jpg"}},
                 TotalCount: 10,
@@ -61,7 +65,17 @@ func PhotoSearchHandler(ctx context.Context, req *gobind.Request[PhotoSearchRequ
 
 func main() {
     mux := http.NewServeMux()
-    mux.Handle("GET /albums/{albumID}/search", gobind.Handler(PhotoSearchHandler))
+    mux.Handle("/albums/{albumID}/search", gobind.Handler(PhotoSearchHandler))
     http.ListenAndServe(":9876", mux)
 }
 ```
+
+## Supported tags
+
+| Tag | Direction | Example |
+|-----|-----------|---------|
+| `header:"name"` | Request/Response | `Auth string \`header:"authorization"\`` |
+| `query:"name"` | Request | `Page int \`query:"page"\`` |
+| `path:"name"` | Request | `ID string \`path:"id"\`` |
+| `body:"json" \| "text"` | Request/Response | `Data MyStruct \`body:"json"\`` |
+| `cookie:"name"` | Request/Response | `SessionID string \`cookie:"session_id"\`` |
