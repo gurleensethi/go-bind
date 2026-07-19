@@ -45,8 +45,8 @@ type StructBinding struct {
 }
 
 type BindingCache struct {
-	m       *sync.Mutex
-	cache   map[reflect.Type]StructBinding
+	m     *sync.Mutex
+	cache map[reflect.Type]StructBinding
 }
 
 func (c *BindingCache) Set(t reflect.Type, b StructBinding) {
@@ -62,8 +62,8 @@ func (c *BindingCache) Get(t reflect.Type) (StructBinding, bool) {
 
 var (
 	bindingCache = BindingCache{
-		m:       &sync.Mutex{},
-		cache:   make(map[reflect.Type]StructBinding),
+		m:     &sync.Mutex{},
+		cache: make(map[reflect.Type]StructBinding),
 	}
 )
 
@@ -358,8 +358,17 @@ func getResponseBody(val reflect.Value, bodyType string) ([]byte, string) {
 	return nil, ""
 }
 
-// getCookiesFromFieldVal returns a cookie from the provided reflect.Value,
-// Only supports string and struct(of type http.Cookie) as valid types to fetch values from.
+// getCookiesFromFieldVal converts a response field value into an http.Cookie.
+//
+// Extracts cookie data from handler return values tagged with "cookie" bind tag.
+// Supports string (creates basic cookie with given name) and http.Cookie (preserves all attributes).
+// Automatically dereferences pointers; nil pointers and unsupported types return nil.
+//
+// Parameters:
+//   - val: reflect.Value containing string, http.Cookie, or pointer to either.
+//   - name: Cookie name for string input; ignored for http.Cookie (uses struct's Name).
+//
+// Returns *http.Cookie ready for http.SetCookie, or nil if input is nil/unsupported.
 func getCookiesFromFieldVal(val reflect.Value, name string) *http.Cookie {
 	if val.Kind() == reflect.Pointer {
 		if val.IsNil() {
