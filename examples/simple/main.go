@@ -47,11 +47,36 @@ type PhotoAlbumSearchResponse struct {
 	Token    string       `cookie:"token"`
 }
 
+type ApiErrorBody struct {
+	Message string         `json:"message"`
+	Details map[string]any `json:"details"`
+}
+
+type ApiError struct {
+	RetryAfter int          `header:"Retry-After"`
+	Body       ApiErrorBody `body:"json"`
+}
+
 func PhotoAlbumSearch(ctx context.Context, req *gobind.Request[PhotoAlbumSearchRequest]) (*gobind.Response[PhotoAlbumSearchResponse], error) {
-	fmt.Printf("%+v\n", req.Request)
+	fmt.Printf("%+v\n", req.Value)
+
+	if req.Value.PageSize > 10 {
+		return nil, &gobind.Error[ApiError]{
+			StatusCode: http.StatusBadRequest,
+			Value: ApiError{
+				RetryAfter: 10,
+				Body: ApiErrorBody{
+					Message: "invalid payload",
+					Details: map[string]any{
+						"page_size": "needs to be between 1 and 10",
+					},
+				},
+			},
+		}
+	}
 
 	return &gobind.Response[PhotoAlbumSearchResponse]{
-		Response: PhotoAlbumSearchResponse{
+		Value: PhotoAlbumSearchResponse{
 			CacheHit: 1,
 			Albums: []Album{
 				{
