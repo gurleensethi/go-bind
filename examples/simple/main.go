@@ -61,9 +61,7 @@ func PhotoAlbumSearch(ctx context.Context, req *gobind.Request[PhotoAlbumSearchR
 	fmt.Printf("%+v\n", req.Value)
 
 	if req.Value.PageSize > 10 {
-		return nil, &gobind.Error[ApiError]{
-			StatusCode: http.StatusBadRequest,
-			Value: ApiError{
+		return nil, gobind.NewError(http.StatusBadRequest, ApiError{
 				RetryAfter: 10,
 				Body: ApiErrorBody{
 					Message: "invalid payload",
@@ -71,8 +69,7 @@ func PhotoAlbumSearch(ctx context.Context, req *gobind.Request[PhotoAlbumSearchR
 						"page_size": "needs to be between 1 and 10",
 					},
 				},
-			},
-		}
+			})
 	}
 
 	return &gobind.Response[PhotoAlbumSearchResponse]{

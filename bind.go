@@ -4,12 +4,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"reflect"
 	"strconv"
-	"strings"
 	"sync"
 )
 
@@ -30,13 +30,31 @@ type Response[T any] struct {
 
 type HandlerFunc[Req any, Resp any] func(context.Context, *Request[Req]) (*Response[Resp], error)
 
+type ErrorInterface interface {
+	error
+	StatusCode() int
+	Value() any
+}
+
 type Error[T any] struct {
-	StatusCode int
-	Value      T
+	HTTPStatus int
+	Err        T
 }
 
 func (e *Error[T]) Error() string {
-	return fmt.Sprintf("%v", e.Value)
+	return fmt.Sprintf("%v", e.Err)
+}
+
+func (e *Error[T]) StatusCode() int {
+	return e.HTTPStatus
+}
+
+func (e *Error[T]) Value() any {
+	return e.Err
+}
+
+func NewError[T any](statusCode int, err T) *Error[T] {
+	return &Error[T]{HTTPStatus: statusCode, Err: err}
 }
 
 type FieldBinding struct {
@@ -145,35 +163,21 @@ func Handler[Req any, Resp any](next HandlerFunc[Req, Resp]) http.Handler {
 
 		resp, err := next(r.Context(), request)
 		if err != nil {
-			errType := reflect.TypeOf(err)
-			if errType.Kind() == reflect.Pointer {
-				errType = errType.Elem()
+			var gobindErr ErrorInterface
+			if errors.As(err, &gobindErr) {
+				writeResponse(w, r, gobindErr.StatusCode(), reflect.ValueOf(gobindErr.Value()), reflect.TypeOf(gobindErr.Value()))
+				return
 			}
 
-			if strings.HasPrefix(errType.String(), "gobind.Error[") {
-				errVal := reflect.ValueOf(err)
-				if errVal.Kind() == reflect.Pointer {
-					errVal = errVal.Elem()
-				}
-				statusCode := errVal.FieldByName("StatusCode").Int()
-
-				value := errVal.FieldByName("Value")
-				if value.Kind() == reflect.Pointer {
-					value = value.Elem()
-				}
-
-				valueType := value.Type()
-				if valueType.Kind() == reflect.Pointer {
-					valueType = valueType.Elem()
-				}
-
-				writeResponse(w, r, int(statusCode), value, valueType)
-			}
-
+			http.Error(w, "internal server error", http.StatusInternalServerError)
 			return
 		}
 
-		// Make sure we are getting back the exact response type.
+		if resp == nil {
+			http.Error(w, "nil response", http.StatusInternalServerError)
+			return
+		}
+
 		gotRespType := reflect.TypeOf(resp.Value)
 		if gotRespType != respType {
 			panic(fmt.Sprintf("expected response type of %s, but got %s", respType.Name(), gotRespType.Name()))
