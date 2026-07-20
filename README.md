@@ -85,28 +85,28 @@ func main() {
 Return typed errors with struct tag serialization (headers, body, cookies, status code):
 
 ```go
-type ApiErrorBody struct {
-    Message string         `json:"message"`
-    Details map[string]any `json:"details"`
+type ErrorBody struct {
+	Message string         `json:"message"`
+	Details map[string]any `json:"details"`
 }
 
-type ApiError struct {
-    RetryAfter int          `header:"Retry-After"`
-    Body       ApiErrorBody `body:"json"`
+type ErrorResponse struct {
+	RetryAfter int       `header:"Retry-After"`
+	Body       ErrorBody `body:"json"`
 }
 
 func PhotoSearchHandler(ctx context.Context, req *gobind.Request[PhotoSearchRequest]) (*gobind.Response[PhotoSearchResponse], error) {
-    if req.Value.PageSize > 10 {
-        return nil, gobind.NewError(http.StatusBadRequest, ApiError{
-            RetryAfter: 10,
-            Body: ApiErrorBody{
-                Message: "invalid page_size",
-                Details: map[string]any{"page_size": "max 10"},
-            },
-        })
-    }
+	if req.Value.PageSize > 10 {
+		return nil, gobind.NewError(http.StatusBadRequest, ErrorResponse{
+			RetryAfter: 10,
+			Body: ErrorBody{
+				Message: "invalid page_size",
+				Details: map[string]any{"page_size": "max 10"},
+			},
+		})
+	}
 
-    // ...
+	// ...
 }
 ```
 
@@ -114,41 +114,41 @@ The error body struct supports the same tags as responses (`header`, `body`, `co
 
 ## Error helpers
 
-Predefined constructors for common HTTP error status codes:
+Predefined constructors for common HTTP error status codes (replace `ErrorResponse` with your own error type):
 
 ```go
 // 400 Bad Request
-return nil, gobind.BadRequestError(ApiError{...})
+return nil, gobind.BadRequestError(ErrorResponse{...})
 
 // 401 Unauthorized
-return nil, gobind.UnauthorizedError(ApiError{...})
+return nil, gobind.UnauthorizedError(ErrorResponse{...})
 
 // 403 Forbidden
-return nil, gobind.ForbiddenError(ApiError{...})
+return nil, gobind.ForbiddenError(ErrorResponse{...})
 
 // 404 Not Found
-return nil, gobind.NotFoundError(ApiError{...})
+return nil, gobind.NotFoundError(ErrorResponse{...})
 
 // 409 Conflict
-return nil, gobind.ConflictError(ApiError{...})
+return nil, gobind.ConflictError(ErrorResponse{...})
 
 // 422 Unprocessable Entity
-return nil, gobind.UnprocessableEntityError(ApiError{...})
+return nil, gobind.UnprocessableEntityError(ErrorResponse{...})
 
 // 429 Too Many Requests
-return nil, gobind.TooManyRequestsError(ApiError{...})
+return nil, gobind.TooManyRequestsError(ErrorResponse{...})
 
 // 500 Internal Server Error
-return nil, gobind.InternalServerError(ApiError{...})
+return nil, gobind.InternalServerError(ErrorResponse{...})
 
 // 502 Bad Gateway
-return nil, gobind.BadGatewayError(ApiError{...})
+return nil, gobind.BadGatewayError(ErrorResponse{...})
 
 // 503 Service Unavailable
-return nil, gobind.ServiceUnavailableError(ApiError{...})
+return nil, gobind.ServiceUnavailableError(ErrorResponse{...})
 
 // 504 Gateway Timeout
-return nil, gobind.GatewayTimeoutError(ApiError{...})
+return nil, gobind.GatewayTimeoutError(ErrorResponse{...})
 ```
 
 All helpers accept a typed error body and return `*gobind.Error[T]` for structured error responses.
