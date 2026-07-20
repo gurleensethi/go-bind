@@ -7,3 +7,7 @@ Zero deps, stdlib only.
 # Documentation instructions
 
 - Always keep changes made to the library source and the README.md in sycn, if there is a change in the public API surface, addition/removal of features/parameters/options, always update the content of README.md accordingly.
+
+# Git Rules
+
+- Never commit by your self, only commit when explicity asked for.
