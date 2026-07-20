@@ -89,3 +89,11 @@ func ServiceUnavailableError[T any](v T) *Error[T] {
 		Value:      v,
 	}
 }
+
+// GatewayTimeoutError creates a 504 Gateway Timeout error with the given error body.
+func GatewayTimeoutError[T any](v T) *Error[T] {
+	return &Error[T]{
+		StatusCode: http.StatusGatewayTimeout,
+		Value:      v,
+	}
+}

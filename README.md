@@ -111,3 +111,44 @@ func PhotoSearchHandler(ctx context.Context, req *gobind.Request[PhotoSearchRequ
 ```
 
 The error body struct supports the same tags as responses (`header`, `body`, `cookie`). Status code is set via the constructor. Non-`gobind.Error` errors fall back to a generic 500 response.
+
+## Error helpers
+
+Predefined constructors for common HTTP error status codes:
+
+```go
+// 400 Bad Request
+return nil, gobind.BadRequestError(ApiError{...})
+
+// 401 Unauthorized
+return nil, gobind.UnauthorizedError(ApiError{...})
+
+// 403 Forbidden
+return nil, gobind.ForbiddenError(ApiError{...})
+
+// 404 Not Found
+return nil, gobind.NotFoundError(ApiError{...})
+
+// 409 Conflict
+return nil, gobind.ConflictError(ApiError{...})
+
+// 422 Unprocessable Entity
+return nil, gobind.UnprocessableEntityError(ApiError{...})
+
+// 429 Too Many Requests
+return nil, gobind.TooManyRequestsError(ApiError{...})
+
+// 500 Internal Server Error
+return nil, gobind.InternalServerError(ApiError{...})
+
+// 502 Bad Gateway
+return nil, gobind.BadGatewayError(ApiError{...})
+
+// 503 Service Unavailable
+return nil, gobind.ServiceUnavailableError(ApiError{...})
+
+// 504 Gateway Timeout
+return nil, gobind.GatewayTimeoutError(ApiError{...})
+```
+
+All helpers accept a typed error body and return `*gobind.Error[T]` for structured error responses.
