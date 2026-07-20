@@ -33,7 +33,7 @@ type HandlerFunc[Req any, Resp any] func(context.Context, *Request[Req]) (*Respo
 type ErrorInterface interface {
 	error
 	StatusCode() int
-	Value() any
+	Body() any
 }
 
 // Error wraps an HTTP error response with a typed body that is serialized
@@ -43,26 +43,26 @@ type ErrorInterface interface {
 //
 // The type parameter T specifies the structure of the error body. Fields of T
 // support the same binding tags as Response (header, body, cookie).
-// Use NewError or construct directly by setting HTTPStatus and Err.
+// Use NewError or construct directly by setting HTTPStatus and Value.
 type Error[T any] struct {
 	HTTPStatus int
-	Err        T
+	Value      T
 }
 
 func (e *Error[T]) Error() string {
-	return fmt.Sprintf("%v", e.Err)
+	return fmt.Sprintf("%v", e.Value)
 }
 
 func (e *Error[T]) StatusCode() int {
 	return e.HTTPStatus
 }
 
-func (e *Error[T]) Value() any {
-	return e.Err
+func (e *Error[T]) Body() any {
+	return e.Value
 }
 
 func NewError[T any](statusCode int, err T) *Error[T] {
-	return &Error[T]{HTTPStatus: statusCode, Err: err}
+	return &Error[T]{HTTPStatus: statusCode, Value: err}
 }
 
 type FieldBinding struct {
@@ -173,7 +173,7 @@ func Handler[Req any, Resp any](next HandlerFunc[Req, Resp]) http.Handler {
 		if err != nil {
 			var gobindErr ErrorInterface
 			if errors.As(err, &gobindErr) {
-				writeResponse(w, r, gobindErr.StatusCode(), reflect.ValueOf(gobindErr.Value()), reflect.TypeOf(gobindErr.Value()))
+				writeResponse(w, r, gobindErr.StatusCode(), reflect.ValueOf(gobindErr.Body()), reflect.TypeOf(gobindErr.Body()))
 				return
 			}
 
