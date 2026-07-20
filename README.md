@@ -76,14 +76,14 @@ func main() {
 
 ## Supported Tags
 
-| Tag                   | Direction          | Example                                     |
-| --------------------- | ------------------ | ------------------------------------------- |
-| `header:"name"`       | Request / Response | `Auth string \`header:"Authorization"\``    |
-| `query:"name"`        | Request            | `Page int \`query:"page"\``                 |
-| `path:"name"`         | Request            | `ID string \`path:"id"\``                   |
-| `body:"json"\|"text"` | Request / Response | `Data User \`body:"json"\``                 |
-| `cookie:"name"`       | Request / Response | `Session string \`cookie:"session"\``       |
-| `status:""`           | Error only         | `Code int \`status:""\`` (sets HTTP status) |
+| Tag                   | Direction          | Example                                      |
+| --------------------- | ------------------ | -------------------------------------------- |
+| `header:"name"`       | Request / Response | ``Auth string `header:"Authorization"` ``    |
+| `query:"name"`        | Request            | ``Page int `query:"page"` ``                 |
+| `path:"name"`         | Request            | ``ID string `path:"id"` ``                   |
+| `body:"json"\|"text"` | Request / Response | ``Data User `body:"json"` ``                 |
+| `cookie:"name"`       | Request / Response | ``Session string `cookie:"session"` ``       |
+| `status:""`           | Error only         | ``Code int `status:""` `` (sets HTTP status) |
 
 ---
 
