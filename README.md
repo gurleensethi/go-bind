@@ -72,13 +72,13 @@ func main() {
 
 ## Supported tags
 
-| Tag                     | Direction        | Example                                    |
-| ----------------------- | ---------------- | ------------------------------------------ |
-| `header:"name"`         | Request/Response | `Auth string \`header:"authorization"\``   |
-| `query:"name"`          | Request          | `Page int \`query:"page"\``                |
-| `path:"name"`           | Request          | `ID string \`path:"id"\``                  |
-| `body:"json" \| "text"` | Request/Response | `Data MyStruct \`body:"json"\``            |
-| `cookie:"name"`         | Request/Response | `SessionID string \`cookie:"session_id"\`` |
+| Tag                     | Direction        | Example                                     |
+| ----------------------- | ---------------- | ------------------------------------------- |
+| `header:"name"`         | Request/Response | ``Auth string `header:"authorization"` ``   |
+| `query:"name"`          | Request          | ``Page int `query:"page"` ``                |
+| `path:"name"`           | Request          | ``ID string `path:"id"` ``                  |
+| `body:"json" \| "text"` | Request/Response | ``Data MyStruct `body:"json"` ``            |
+| `cookie:"name"`         | Request/Response | ``SessionID string `cookie:"session_id"` `` |
 
 ## Error handling
 
