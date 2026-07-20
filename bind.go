@@ -18,11 +18,23 @@ type Http struct {
 	W http.ResponseWriter
 }
 
+// Request represents an incoming HTTP request with typed binding.
+// The type parameter T specifies the request structure whose fields are populated
+// from the HTTP request using struct tags (header, query, path, body, cookie).
+//
+// Use the Value field to access the parsed request data.
+// Use the Http field to access the raw *http.Request and http.ResponseWriter.
 type Request[T any] struct {
 	Value T
 	Http  Http
 }
 
+// Response represents an HTTP response to be serialized and written.
+// The type parameter T specifies the response structure whose fields are serialized
+// to the HTTP response using struct tags (header, body, cookie).
+//
+// Set StatusCode to control the HTTP status (default is 200).
+// Set Value to the response data to be serialized.
 type Response[T any] struct {
 	StatusCode int
 	Value      T
