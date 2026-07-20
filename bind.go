@@ -36,6 +36,14 @@ type ErrorInterface interface {
 	Value() any
 }
 
+// Error wraps an HTTP error response with a typed body that is serialized
+// using struct field tags. It implements the error interface so it can be
+// returned from a handler function to produce a structured error response
+// with a custom status code, headers, body, and cookies.
+//
+// The type parameter T specifies the structure of the error body. Fields of T
+// support the same binding tags as Response (header, body, cookie).
+// Use NewError or construct directly by setting HTTPStatus and Err.
 type Error[T any] struct {
 	HTTPStatus int
 	Err        T
