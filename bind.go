@@ -348,6 +348,17 @@ func getCookiesFromFieldVal(val reflect.Value, name string) *http.Cookie {
 	return nil
 }
 
+// buildStructBinding inspects a struct type for HTTP binding tags and returns a StructBinding.
+//
+// It examines exported fields for the following tags (in priority order):
+//   - header: binds to an HTTP header
+//   - query: binds to a URL query parameter
+//   - path: binds to a path parameter
+//   - body: binds to the request/response body
+//   - cookie: binds to an HTTP cookie
+//
+// Only the first matching tag per field is used. Untagged and unexported fields are ignored.
+// Fields are processed in declaration order.
 func buildStructBinding(refType reflect.Type) StructBinding {
 	binding := StructBinding{}
 
