@@ -38,12 +38,12 @@ type Photo struct {
 
 func PhotoSearchHandler(ctx context.Context, req *gobind.Request[PhotoSearchRequest]) (*gobind.Response[PhotoSearchResponse], error) {
     // Request fields pre-filled from incoming HTTP request:
-    req.Request.Authorization   // (header:"authorization")
-    req.Request.AlbumID         // (path:"albumID")
-    req.Request.IncludeMetadata // (query:"include_metadata")
-    req.Request.PageSize        // (query:"page_size")
-    req.Request.Page            // (query:"page")
-    req.Request.SessionID       // (cookie:"session_id")
+    req.Value.Authorization   // (header:"authorization")
+    req.Value.AlbumID         // (path:"albumID")
+    req.Value.IncludeMetadata // (query:"include_metadata")
+    req.Value.PageSize        // (query:"page_size")
+    req.Value.Page            // (query:"page")
+    req.Value.SessionID       // (cookie:"session_id")
 
     // Access raw HTTP types if needed
     req.Http.R // *http.Request
@@ -52,7 +52,7 @@ func PhotoSearchHandler(ctx context.Context, req *gobind.Request[PhotoSearchRequ
     // Response automatically serialized and written
     return &gobind.Response[PhotoSearchResponse]{
         StatusCode: http.StatusOK,
-        Response: PhotoSearchResponse{
+        Value: PhotoSearchResponse{
             RateLimit: 60,
             Token:     "abc-123",
             Result: PhotosSearchResult{
@@ -79,3 +79,35 @@ func main() {
 | `path:"name"`           | Request          | `ID string \`path:"id"\``                  |
 | `body:"json" \| "text"` | Request/Response | `Data MyStruct \`body:"json"\``            |
 | `cookie:"name"`         | Request/Response | `SessionID string \`cookie:"session_id"\`` |
+
+## Error handling
+
+Return typed errors with struct tag serialization (headers, body, cookies, status code):
+
+```go
+type ApiErrorBody struct {
+    Message string         `json:"message"`
+    Details map[string]any `json:"details"`
+}
+
+type ApiError struct {
+    RetryAfter int          `header:"Retry-After"`
+    Body       ApiErrorBody `body:"json"`
+}
+
+func PhotoSearchHandler(ctx context.Context, req *gobind.Request[PhotoSearchRequest]) (*gobind.Response[PhotoSearchResponse], error) {
+    if req.Value.PageSize > 10 {
+        return nil, gobind.NewError(http.StatusBadRequest, ApiError{
+            RetryAfter: 10,
+            Body: ApiErrorBody{
+                Message: "invalid page_size",
+                Details: map[string]any{"page_size": "max 10"},
+            },
+        })
+    }
+
+    // ...
+}
+```
+
+The error body struct supports the same tags as responses (`header`, `body`, `cookie`). Status code is set via the constructor. Non-`gobind.Error` errors fall back to a generic 500 response.
