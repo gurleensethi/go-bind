@@ -377,7 +377,39 @@ func buildStructBinding(refType reflect.Type) StructBinding {
 	return binding
 }
 
-func writeResponse(w http.ResponseWriter, r *http.Request, statusCode int, responseValue reflect.Value, responseType reflect.Type) {
+// writeResponse writes an HTTP response by serializing a struct value into headers,
+// body, and cookies based on struct field tags.
+//
+// The responseValue must be a struct or pointer to a struct. Fields are processed
+// according to their tags:
+//
+//   - "header": Field value is converted to string and added as a response header.
+//     Multiple fields with the same header name are appended.
+//   - "body": Field value is serialized as the response body. Only the first body
+//     field is used. The tag value may specify a content type (e.g., "json", "xml").
+//   - "cookie": Field value must be an *http.Cookie or []*http.Cookie, which are
+//     set on the response via http.SetCookie.
+//
+// Headers are written first, then the status code (if non-zero), then the body.
+// The binding for responseType is cached for subsequent calls.
+//
+// Parameters:
+//   - w: The http.ResponseWriter to write the response to.
+//   - _: The http.Request (unused, retained for handler interface compatibility).
+//   - statusCode: HTTP status code to write. If 0, WriteHeader is not called.
+//   - responseValue: Reflect value of the response struct to serialize. Must be
+//     a valid struct or pointer to struct.
+//   - responseType: Reflect type of the response struct for binding cache lookup.
+//
+// Panics if responseValue is not a struct or pointer to struct, or if reflection
+// operations fail due to unexported fields.
+func writeResponse(
+	w http.ResponseWriter,
+	_ *http.Request,
+	statusCode int,
+	responseValue reflect.Value,
+	responseType reflect.Type,
+) {
 	binding, ok := bindingCache.Get(responseType)
 	if !ok {
 		binding = buildStructBinding(responseType)
