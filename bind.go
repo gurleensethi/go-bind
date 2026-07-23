@@ -77,38 +77,57 @@ func NewError[T any](statusCode int, err T) *Error[T] {
 	return &Error[T]{StatusCode: statusCode, Value: err}
 }
 
+// FieldBinding describes how a single struct field is bound from an HTTP request
+// or serialized to an HTTP response.
 type FieldBinding struct {
-	// Field is the struct field metadata
+	// Field is the struct field metadata.
 	Field reflect.StructField
 
-	// TagType is the binding source type (header, query, path, body, cookie)
+	// TagType is the binding source type (header, query, path, body, cookie).
 	TagType string
 
-	// TagValue is the tag value (e.g., header name, query param name)
+	// TagValue is the tag value (e.g., header name, query param name).
 	TagValue string
 }
 
+// StructBinding holds the compiled field bindings for a single struct type.
+// It is produced by buildStructBinding and cached in BindingCache.
 type StructBinding struct {
 	Fields []FieldBinding
 }
 
+// BindingCache stores compiled struct bindings for HTTP request/response types.
+// It is used internally by Handler to cache reflection results at registration time,
+// avoiding repeated reflection on the hot path. The cache is thread-safe.
+//
+// The zero value is not safe to use; initialize with BindingCache{...} or use
+// the package-level bindingCache variable.
 type BindingCache struct {
-	m     *sync.Mutex
+	// m protects concurrent access to cache.
+	m *sync.Mutex
+
+	// cache maps reflect.Type to its compiled StructBinding.
 	cache map[reflect.Type]StructBinding
 }
 
+// Set stores a compiled StructBinding for the given type.
 func (c *BindingCache) Set(t reflect.Type, b StructBinding) {
 	c.m.Lock()
 	defer c.m.Unlock()
 	c.cache[t] = b
 }
 
+// Get retrieves a compiled StructBinding for the given type.
+// The bool return indicates whether the type was found in the cache.
 func (c *BindingCache) Get(t reflect.Type) (StructBinding, bool) {
 	b, ok := c.cache[t]
 	return b, ok
 }
 
 var (
+	// bindingCache is the package-level cache for compiled struct bindings.
+	// It is initialized once and used by Handler to avoid re-reflection
+	// on each request. It is safe for concurrent use.
 	bindingCache = BindingCache{
 		m:     &sync.Mutex{},
 		cache: make(map[reflect.Type]StructBinding),
